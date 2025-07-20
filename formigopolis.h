@@ -55,6 +55,19 @@ typedef struct {
     int vezes_frustrado;
 } Cliente;
 
+typedef struct {
+    int id_cliente;
+    int prioridade;
+    int timestamp; // para ordem de chegada (fifo dentro da mesma prioridade)
+    int frustracoes; // contador de frustrações para inanição
+} ItemFila;
+
+typedef struct {
+    ItemFila items[MAX_CLIENTES * 10]; // buffer maior para múltiplas iterações
+    int tamanho;
+    int contador_timestamp; // contador global para timestamps
+} FilaPrioridade;
+
 // monitor do caixa - estrutura principal de sincronização
 typedef struct {
     // mutex e variaveis de cond

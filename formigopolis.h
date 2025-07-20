@@ -73,4 +73,18 @@ typedef struct {
 } Monitor_do_Caixa;
 
 
+// FUNCOES DE PRINT
+void print_monitor_inicializado();
+void print_monitor_finalizado();
+void print_cliente_entrou_fila(int id_cliente, const char* nome);
+void print_cliente_sendo_atendido(int id_cliente, const char* nome);
+void print_cliente_finalizou_atendimento(int id_cliente, const char* nome);
+void print_aviso_deadlock();
+void print_clientes_inicializados();
+void print_cliente_info(const char* nome, int prioridade, int casal);
+void print_cabecalho_sistema();
+void print_iniciando_atendimento();
+void print_atendimento_finalizado();
+void print_erro_thread(int id_cliente);
+
 #endif

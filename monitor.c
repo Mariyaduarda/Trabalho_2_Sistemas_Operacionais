@@ -55,8 +55,13 @@ void destruir_monitor(){
     print_monitor_finalizado();
 }
 
-// verificando possivel dl
-bool verificar_deadlock(){
+/*
+verificando espera infinita
+-3 ou mais categorias de clientes estão esperando simultaneamente
+-conjuge bloqueiam uns aos outros
+-ngm consegue avançar na fila
+*/
+bool verificar_deadlock_tempo(){
     int categoria_esperando = 0;
     for (int i = 0; i < 4; i++) {
         if (monitor.categoria_esperando[i]){
@@ -67,9 +72,61 @@ bool verificar_deadlock(){
 }
 
 // cliente entra na fila e espera ser atendido
-solicitar_atendimento(){
+void solicitar_atendimento( int id_cliente, const char* nome){
+    phthread_mutex_lock(&monitor.mutex);
 
+    // marca cliente à fila
+    cliente[id_cliente].esta_na_fila = true;
+    monitor.categoria_esperando[clientes[id_cliente].prioridade_atual] = true;
 
+    print_cliente_entrou_fila(int id_cliente, const char* nome);
+
+    // esperar enquanto n pd ser atendido
+    while (monitor.programa_ativo && // caixa ocupado
+            (monitor.caixa || monitor.casal_no_caixa[clientes[id_cliente].casal.id - 1] || // conjuge sendo attendido
+                encontrar_prox_cliente() != id_cliente)){ // n é o proximo na fila
+        struct timespec timeout;
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_sec += VERIFICA_DEALOCK; // verifica dealock const, add 5segundos (formigopoli.h)
+
+        int resutado = pthread_cond_timedwait(&monitor.cond_fila,)
+
+        if (resutado == ETIMEDOUT && verificar_deadlock_tempo()){
+            print_aviso_deadlock();
+            break;
+        }
+        }
+
+    if (!monitor.programa_ativo){
+      pthread_mutex_unlock(&monitor.mutex);
+      return;
+    }
+
+    // cliente sendo atendido
+    monitor.caixa = true; // marca que o caixa ta ocupado
+    monitor.id_cliente_atendida = id_cliente; // diz qm ta sendo atendido
+    // se o cliente for casal, marca o id do casal
+    // e impede que ambos sejam atendido concomitantemente
+    monitor.casal_no_caixa[cliente[id_cliente].casal.id - 1] = true;
+    clientes[id_cliente].esta_na_fila = false; // remove o cliente da fila
+
+    // existe algm da mesma categoria?
+    bool ainda_tem_categoria = false;
+    // pecorro os cleitnes, ignorando o que ta sendo atendido
+    for (int i = 0; i < MAX_CLIENTE; i++) {
+        if (i != id_cliente && clientes[i].esta_na_fila &&
+            cliente[i].prioridade_atual ==clientes[id_cliente].atual){// verifica se é da msm categoria
+            ainda_tem_categoria = true; // se for da msm categoria devolve true e sai do for
+            break;
+        }
+    }
+    // se x categoria nao tem cliente marca que n tem ngm mais esperando
+    if (!ainda_tem_categoria){
+        monitor.categoria_esperando[id_cliente] = false;
+    }
+    // imprime cliente q ta sendo atendido e libera a mutex
+    print_cliente_sendo_atendido(id_cliente, clientes[id_cliente].nome);
+    pthread_mutex_unlock(&monitor.mutex);
 }
 
 // cliente libera o caixa apos atendido

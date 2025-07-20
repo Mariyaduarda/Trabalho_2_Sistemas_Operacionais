@@ -47,9 +47,12 @@ typedef enum {
 typedef struct {
     int id_cliente;
     char nome[MAX_NOME];
+    int prioridade_original;
     Prioridade prioridade_atual;
     Casal casal_id;
     bool esta_na_fila;
+    time_t timestamp_chegada;
+    int vezes_frustrado;
 } Cliente;
 
 // monitor do caixa - estrutura principal de sincronização

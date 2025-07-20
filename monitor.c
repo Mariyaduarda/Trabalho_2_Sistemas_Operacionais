@@ -1,8 +1,8 @@
 /*
 monitor.c - implementação do caixa de atendimento
 
-1 - monitor de sincronizaccao
-2 - sistema de prioridade(gravidas, idosod, etc)
+1 - monitor de sincronizacao
+2 - sistema de prioridade (gravidas, idosos, etc)
 3 - controle de casais - impedir atendimento concomitante
 4 - deteccao de deadlock - verificar por tempo
 5 - ordem de chegada - se da msm prioridade, atende por ordem de chegada
@@ -23,7 +23,85 @@ void print_clientes_inicializados();
 Monitor_do_Caixa monitor;
 Cliente clientes[MAX_CLIENTES];
 
-// configurar o sitema de sincronizacao
+// Estrutura da fila de prioridade
+typedef struct {
+    int id_cliente;
+    int prioridade;
+    int timestamp; // para ordem de chegada (FIFO dentro da mesma prioridade)
+} ItemFila;
+
+typedef struct {
+    ItemFila items[MAX_CLIENTES * 2]; // buffer maior para segurança
+    int tamanho;
+    int contador_timestamp; // contador global para timestamps
+} FilaPrioridade;
+
+FilaPrioridade fila_atendimento;
+
+// Funções da fila de prioridade
+void inicializar_fila() {
+    fila_atendimento.tamanho = 0;
+    fila_atendimento.contador_timestamp = 0;
+}
+
+void inserir_fila(int id_cliente) {
+    if (fila_atendimento.tamanho >= MAX_CLIENTES * 2) {
+        return; // fila cheia
+    }
+
+    ItemFila novo_item;
+    novo_item.id_cliente = id_cliente;
+    novo_item.prioridade = clientes[id_cliente].prioridade_atual;
+    novo_item.timestamp = fila_atendimento.contador_timestamp++;
+
+    // Inserção mantendo ordem de prioridade (menor número = maior prioridade)
+    // Em caso de empate, ordem de chegada (timestamp menor primeiro)
+    int pos = fila_atendimento.tamanho;
+
+    // Encontra posição correta para inserir
+    while (pos > 0 &&
+           (fila_atendimento.items[pos-1].prioridade > novo_item.prioridade ||
+            (fila_atendimento.items[pos-1].prioridade == novo_item.prioridade &&
+             fila_atendimento.items[pos-1].timestamp > novo_item.timestamp))) {
+        fila_atendimento.items[pos] = fila_atendimento.items[pos-1];
+        pos--;
+    }
+
+    fila_atendimento.items[pos] = novo_item;
+    fila_atendimento.tamanho++;
+}
+
+void remover_cliente_fila(int id_cliente) {
+    for (int i = 0; i < fila_atendimento.tamanho; i++) {
+        if (fila_atendimento.items[i].id_cliente == id_cliente) {
+            // Remove o item deslocando os demais
+            for (int j = i; j < fila_atendimento.tamanho - 1; j++) {
+                fila_atendimento.items[j] = fila_atendimento.items[j + 1];
+            }
+            fila_atendimento.tamanho--;
+            break;
+        }
+    }
+}
+
+int obter_proximo_cliente() {
+    // Procura o primeiro cliente na fila que pode ser atendido
+    for (int i = 0; i < fila_atendimento.tamanho; i++) {
+        int id_cliente = fila_atendimento.items[i].id_cliente;
+
+        // Verifica se o cônjuge não está sendo atendido
+        if (!monitor.casal_no_caixa[clientes[id_cliente].casal_id - 1]) {
+            return id_cliente;
+        }
+    }
+    return -1; // nenhum cliente pode ser atendido
+}
+
+bool fila_vazia() {
+    return fila_atendimento.tamanho == 0;
+}
+
+// configurar o sistema de sincronizacao
 void inicializar_monitor() {
     // inicializa mutex e variavel de condicao
     pthread_mutex_init(&monitor.mutex, NULL);
@@ -40,6 +118,10 @@ void inicializar_monitor() {
         monitor.categoria_esperando[i] = false;
         monitor.casal_no_caixa[i] = false;
     }
+
+    // inicializar fila de prioridade
+    inicializar_fila();
+
     print_monitor_inicializado();
 }
 
@@ -51,119 +133,117 @@ void destruir_monitor() {
 }
 
 /*
-verificando espera infinita
+verificando espera infinita (deadlock)
 -3 ou mais categorias de clientes estão esperando simultaneamente
--conjuge bloqueiam uns aos outros
--ngm consegue avançar na fila
+-conjuges bloqueiam uns aos outros
+-ninguém consegue avançar na fila
 */
 bool verificar_deadlock_tempo() {
-    int categoria_esperando = 0;
+    int categorias_esperando = 0;
     for (int i = 0; i < 4; i++) {
         if (monitor.categoria_esperando[i]) {
-            categoria_esperando++;
+            categorias_esperando++;
         }
     }
-    return categoria_esperando >= 3; // pode ocorrer caso +3 cat. estejam no aguardo da vrz
+
+    // Deadlock se 3+ categorias esperando OU se a fila não está vazia mas ninguém pode ser atendido
+    return categorias_esperando >= 3 ||
+           (!fila_vazia() && obter_proximo_cliente() == -1);
 }
 
-// cliente libera o caixa apos atendido
-int encontrar_prox_cliente() {
-    int prox = -1;
-    int menor_prioridade = 4;
-    int menor_timestamp = INT_MAX;
-
-    for (int i = 0; i < MAX_CLIENTES; i++) {
-        if (clientes[i].esta_na_fila) {
-            bool casal_no_caixa = monitor.casal_no_caixa[clientes[i].casal_id - 1];
-
-            if (!casal_no_caixa) {
-                if (clientes[i].prioridade_atual < menor_prioridade ||
-                    (clientes[i].prioridade_atual == menor_prioridade &&
-                     clientes[i].id_cliente < menor_timestamp)) {
-
-                    menor_prioridade = clientes[i].prioridade_atual;
-                    menor_timestamp = clientes[i].id_cliente;
-                    prox = i;
-                }
-            }
-        }
+void atualizar_categoria_esperando() {
+    // Reset das categorias
+    for (int i = 0; i < 4; i++) {
+        monitor.categoria_esperando[i] = false;
     }
-    return prox;
+
+    // Verifica quais categorias ainda têm clientes na fila
+    for (int i = 0; i < fila_atendimento.tamanho; i++) {
+        int id_cliente = fila_atendimento.items[i].id_cliente;
+        int prioridade = clientes[id_cliente].prioridade_atual;
+        monitor.categoria_esperando[prioridade] = true;
+    }
 }
 
 // cliente entra na fila e espera ser atendido
 void solicitar_atendimento(int id_cliente, const char* nome) {
     pthread_mutex_lock(&monitor.mutex);
 
-    // marca cliente à fila
+    // marca cliente na fila
     clientes[id_cliente].esta_na_fila = true;
-    monitor.categoria_esperando[clientes[id_cliente].prioridade_atual] = true;
+
+    // adiciona cliente à fila de prioridade
+    inserir_fila(id_cliente);
+
+    // atualiza categorias esperando
+    atualizar_categoria_esperando();
 
     print_cliente_entrou_fila(id_cliente, nome);
 
-    // esperar enquanto n pd ser atendido
-    while (monitor.programa_ativo && // caixa ocupado
-           (monitor.caixa ||
-            monitor.casal_no_caixa[clientes[id_cliente].casal_id - 1] || // conjuge sendo attendido
-            encontrar_prox_cliente() != id_cliente)) { // n é o proximo na fila
+    // esperar enquanto não pode ser atendido
+    while (monitor.programa_ativo &&
+           (monitor.caixa || // caixa ocupado
+            monitor.casal_no_caixa[clientes[id_cliente].casal_id - 1] || // cônjuge sendo atendido
+            obter_proximo_cliente() != id_cliente)) { // não é o próximo na fila
 
         struct timespec timeout;
         clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_sec += VERIFICA_DEADLOCK; // verifica dealock const, add 5segundos (formigopoli.h)
+        timeout.tv_sec += VERIFICA_DEADLOCK; // verifica deadlock const, add 5segundos
 
         int resultado = pthread_cond_timedwait(&monitor.cond_fila, &monitor.mutex, &timeout);
 
         if (resultado == ETIMEDOUT && verificar_deadlock_tempo()) {
             print_aviso_deadlock();
-            break;
+            // Em caso de deadlock, remove o cliente da fila e sai
+            remover_cliente_fila(id_cliente);
+            clientes[id_cliente].esta_na_fila = false;
+            atualizar_categoria_esperando();
+            pthread_mutex_unlock(&monitor.mutex);
+            return;
         }
     }
 
     if (!monitor.programa_ativo) {
+        // Programa finalizando, remove cliente da fila
+        remover_cliente_fila(id_cliente);
+        clientes[id_cliente].esta_na_fila = false;
         pthread_mutex_unlock(&monitor.mutex);
         return;
     }
 
     // cliente sendo atendido
-    monitor.caixa = true; // marca que o caixa ta ocupado
-    monitor.id_cliente_atendida = id_cliente; // diz qm ta sendo atendido
-    // se o cliente for casal, marca o id do casal
-    // e impede que ambos sejam atendido concomitantemente
-    monitor.casal_no_caixa[clientes[id_cliente].casal_id - 1] = true;
-    clientes[id_cliente].esta_na_fila = false; // remove o cliente da fila
+    monitor.caixa = true; // marca que o caixa está ocupado
+    monitor.id_cliente_atendida = id_cliente; // diz quem está sendo atendido
 
-    // existe algm da mesma categoria?
-    bool ainda_tem_categoria = false;
-    // pecorro os cleitnes, ignorando o que ta sendo atendido
-    for (int i = 0; i < MAX_CLIENTES; i++) {
-        if (i != id_cliente && clientes[i].esta_na_fila &&
-            clientes[i].prioridade_atual == clientes[id_cliente].prioridade_atual) { // verifica se é da msm categoria
-            ainda_tem_categoria = true; // se for da msm categoria devolve true e sai do for
-            break;
-        }
-    }
-    // se x categoria nao tem cliente marca que n tem ngm mais esperando
-    if (!ainda_tem_categoria) {
-        monitor.categoria_esperando[clientes[id_cliente].prioridade_atual] = false;
-    }
-    // imprime cliente q ta sendo atendido e libera a mutex
+    // se o cliente for de casal, marca o id do casal
+    // e impede que ambos sejam atendidos concomitantemente
+    monitor.casal_no_caixa[clientes[id_cliente].casal_id - 1] = true;
+
+    // remove cliente da fila de prioridade
+    remover_cliente_fila(id_cliente);
+    clientes[id_cliente].esta_na_fila = false;
+
+    // atualiza categorias esperando
+    atualizar_categoria_esperando();
+
+    // imprime cliente que está sendo atendido e libera a mutex
     print_cliente_sendo_atendido(id_cliente, clientes[id_cliente].nome);
     pthread_mutex_unlock(&monitor.mutex);
 }
 
-// finaliza atendimento do cliente q tava sendo atendido
+// finaliza atendimento do cliente que estava sendo atendido
 void finalizar_atendimento(int id_cliente) {
     pthread_mutex_lock(&monitor.mutex);
 
     if (monitor.id_cliente_atendida == id_cliente) {
         print_cliente_finalizou_atendimento(id_cliente, clientes[id_cliente].nome);
 
-        //liberar caixa
+        // liberar caixa
         monitor.caixa = false;
         monitor.id_cliente_atendida = -1;
         monitor.casal_no_caixa[clientes[id_cliente].casal_id - 1] = false;
 
-        // notificar todos os clientes q estao no aguardo
+        // notificar todos os clientes que estão no aguardo
         pthread_cond_broadcast(&monitor.cond_fila);
     }
     // liberar mutex
@@ -174,7 +254,7 @@ void finalizar_atendimento(int id_cliente) {
 void* thread_cliente(void* arg) {
     int id_cliente = *((int*)arg);
 
-    // simula tempo andom antes de chegar
+    // simula tempo aleatório antes de chegar
     sleep(rand() % 3 + 1);
 
     solicitar_atendimento(id_cliente, clientes[id_cliente].nome);
@@ -182,7 +262,7 @@ void* thread_cliente(void* arg) {
     // simula tempo de atendimento
     sleep(rand() % 4 + 2);
 
-    // finalziar atendimento
+    // finalizar atendimento
     finalizar_atendimento(id_cliente);
 
     return NULL;
@@ -193,15 +273,15 @@ void inicializar_clientes() {
     clientes[VANDA] = (Cliente){VANDA, "VANDA", IDOSO, CASAL_IDOSOS, false};
     clientes[VALTER] = (Cliente){VALTER, "VALTER", IDOSO, CASAL_IDOSOS, false};
 
-    // casal gravidos
+    // casal grávidos
     clientes[MARIA] = (Cliente){MARIA, "MARIA", GRAVIDA, CASAL_GRAVIDOS, false};
     clientes[MARCOS] = (Cliente){MARCOS, "MARCOS", PADRAO, CASAL_GRAVIDOS, false};
 
-    // casal limitantes fisicos
+    // casal limitantes físicos
     clientes[PAULA] = (Cliente){PAULA, "PAULA", DEFICIENTE, CASAL_DEFICIENCTES, false};
     clientes[PEDRO] = (Cliente){PEDRO, "PEDRO", DEFICIENTE, CASAL_DEFICIENCTES, false};
 
-    // casal padrao
+    // casal padrão
     clientes[SUELI] = (Cliente){SUELI, "SUELI", PADRAO, CASAL_PADRAO, false};
     clientes[SILAS] = (Cliente){SILAS, "SILAS", PADRAO, CASAL_PADRAO, false};
 
@@ -213,10 +293,10 @@ void inicializar_clientes() {
     }
 }
 
-//finalizar o programa
+// finalizar o programa
 void finalizar_programa() {
     pthread_mutex_lock(&monitor.mutex);
     monitor.programa_ativo = false; // programa finalizando, para atendimento
-    pthread_cond_broadcast(&monitor.cond_fila); //libera threads presa
-    pthread_mutex_unlock(&monitor.mutex); // sai da secao critica
+    pthread_cond_broadcast(&monitor.cond_fila); // libera threads presas
+    pthread_mutex_unlock(&monitor.mutex); // sai da seção crítica
 }

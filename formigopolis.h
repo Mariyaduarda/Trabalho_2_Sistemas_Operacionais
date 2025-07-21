@@ -56,8 +56,6 @@ typedef struct {
 } Cliente;
 
 typedef struct {
-    int id_cliente;
-    int prioridade;
     int timestamp; // para ordem de chegada (fifo dentro da mesma prioridade)
     int frustracoes; // contador de frustrações para inanição
 } ItemFila;

@@ -394,40 +394,6 @@ void inicializar_clientes() {
     }
 }
 
-// inicializar sistema completo
-void iniciar_sistema(int argc, char* argv[]) {
-    // processa argumentos da linha de comando
-    if (argc >= 2) {
-        iteracoes_por_pessoa = atoi(argv[1]);
-        if (iteracoes_por_pessoa <= 0) {
-            iteracoes_por_pessoa = 1;
-        }
-    }
-
-    srand(time(NULL)); // inicializa gerador de números aleatórios
-
-    inicializar_monitor();
-    inicializar_clientes();
-
-    // cria thread do gerente
-    pthread_create(&thread_gerente, NULL, thread_gerente_func, NULL);
-
-    // cria threads dos clientes
-    pthread_t threads[MAX_CLIENTES];
-    int ids[MAX_CLIENTES];
-
-    for (int i = 0; i < MAX_CLIENTES; i++) {
-        ids[i] = i;
-        pthread_create(&threads[i], NULL, thread_cliente, &ids[i]);
-    }
-
-    // aguarda todas as threads terminarem
-    for (int i = 0; i < MAX_CLIENTES; i++) {
-        pthread_join(threads[i], NULL);
-    }
-
-    destruir_monitor();
-}
 
 // finalizar o programa
 void finalizar_programa() {

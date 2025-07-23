@@ -32,31 +32,29 @@ int filaTamanho(FilaPrioridade* fila, int prioridade) {
 }
 
 // Adiciona um cliente na fila de determinada prioridade
-int filaInsere(FilaPrioridade* fila, int prioridade, int id_cliente) {
-    // se a fila ta' cheia, n tem como inserir
-    if (isFilaCheia(fila, prioridade)) return 0;
+int filaInsere(FilaPrioridade* fila, int prioridade, int id_cliente, Cliente clientes[]) {
+    if (filaCheia(fila, prioridade)) return 0;
 
-    // faz a insercao em si
     int pos = fila->fim[prioridade];
-    fila->fila[prioridade][pos].id_cliente = id_cliente;
-    fila->fila[prioridade][pos].timestamp_chegada = fila->contador_timestamp++;
-    fila->fila[prioridade][pos].frustracoes = 0;
-
-    // atualiza o atributo fim
+    fila->fila[prioridade][pos] = id_cliente;
     fila->fim[prioridade] = (pos + 1) % TAMANHO_MAX_FILA;
+
+    clientes[id_cliente].timestamp_chegada = fila->contador_timestamp++;
+    clientes[id_cliente].vezes_frustrado = 0;
+
     return 1; // Sucesso
 }
 
-// Remove o primeiro cliente da fila de determinada prioridade
-int filaRemove(FilaPrioridade* fila, int prioridade, ItemFila* removido) {
-    // se a fila ta' vazia, n tem como remover
-    if (isFilaVazia(fila, prioridade)) return 0;
+// Remove o primeiro client e da fila de determinada prioridade
+int filaRemove(FilaPrioridade* fila, int prioridade, int* id_removido, Cliente clientes[]) {
+    if (filaVazia(fila, prioridade)) return 0;
 
-    // faz a remocao em si
     int pos = fila->inicio[prioridade];
-    *removido = fila->fila[prioridade][pos];
-
-    // atualiza o atributo inicio
+    *id_removido = fila->fila[prioridade][pos];
     fila->inicio[prioridade] = (pos + 1) % TAMANHO_MAX_FILA;
+
+    // Atualiza o cliente, se necessário
+    clientes[*id_removido].vezes_frustrado++; // ou outra lógica desejada
+
     return 1; // Sucesso
 }

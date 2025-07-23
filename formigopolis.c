@@ -58,3 +58,45 @@ int filaRemove(FilaPrioridade* fila, int prioridade, int* id_removido, Cliente c
 
     return 1; // Sucesso
 }
+
+
+//=================================================
+// CLIENTES
+
+// Inicializa os clientes
+void clienteInit(Cliente clientes[]) {
+    
+    //define os nomes de tds os clientes
+    char* nomes[MAX_CLIENTES] = {
+        "Maria", "Marcos",    // casal gravidos
+        "Vanda", "Valter",    // casal idosos
+        "Paula", "Pedro",     // casal deficientes
+        "Sueli", "Silas"      // casal padrao
+    };
+
+    //define a prioridade de tds os clientes
+    Prioridade prioridades[MAX_CLIENTES] = {
+        GRAVIDA, GRAVIDA,
+        IDOSO, IDOSO,
+        DEFICIENTE, DEFICIENTE,
+        PADRAO, PADRAO
+    };
+
+    for (int i = 0; i < MAX_CLIENTES; i++) {
+        clientes[i].id_cliente = i; // define o id do cliente
+
+        //atribui o nome ao struct
+        strncpy(clientes[i].nome, nomes[i], MAX_NOME);
+        //coloca o EOF no final do nome, só pra ter ctz
+        clientes[i].nome[MAX_NOME - 1] = '\0';
+
+        //atribui a prioridade ao struct
+        clientes[i].prioridadeOriginal = prioridades[i];
+        clientes[i].prioridadeAtual = prioridades[i];
+
+        // atribui os valores que sao pra tds os clientes
+        clientes[i].estaNaFila = false;
+        clientes[i].timestamp_chegada = 0;
+        clientes[i].vezes_frustrado = 0;
+    }
+}

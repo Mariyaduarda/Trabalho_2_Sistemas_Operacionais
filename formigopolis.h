@@ -17,55 +17,64 @@
 // constantes do programa
 #define MAX_CLIENTES 8      // Num. maximo de clientes que o sistema suporta
 #define MAX_NOME 16         // Tamanho do nome um pouco maior, pra n causar problemas
-#define VERIFICA_DEADLOCK 5 // 
+#define VERIFICA_DEADLOCK 5 //
+#define NUM_PRIORIDADES 4   // Qtd. de niveis de prioridades
+#define TAMANHO_MAX_FILA 32 // Num. maximo de itens por fila
+
+//=================================================
+// CLIENTES
 
 // enum para conduzir a prioridade
 typedef enum {
-    GRAVIDA    = 0,  // alta prioridade
-    IDOSO      = 1,
-    DEFICIENTE = 2,
+    GRAVIDA    = 0, // alta prioridade
+    IDOSO      = 1, //
+    DEFICIENTE = 2, //
     PADRAO     = 3  // pouca prioridade
 } Prioridade;
 
-// declarar casais p/ nao serem atendidos juntos
-// entre conjuges atende-se em ordem de chegada
 typedef enum {
-    CASAL_IDOSOS       = 1,
-    CASAL_GRAVIDOS     = 2,
-    CASAL_DEFICIENCTES = 3,
-    CASAL_PADRAO       = 4,
-} Casal;
-
-typedef enum {
-    VANDA = 0, VALTER = 1, // casal idoso
-    MARIA = 2, MARCOS = 3, // casal gravidos
+    MARIA = 0, MARCOS = 1, // casal gravidos
+    VANDA = 2, VALTER = 3, // casal idoso
     PAULA = 4, PEDRO  = 5, // casal deficientes
     SUELI = 6, SILAS  = 7  // casal padrao
 } ClienteId;
 
 // representar cada pessoa
 typedef struct {
-    int id_cliente;              // id do cliente
-    char nome[MAX_NOME];         // nome do cliente
-    int prioridade_original;     // Prioridade antes de lidar com inanicao
-    Prioridade prioridade_atual; // Prioridade atual, lidando com inanicao
-    Casal casal_id;              // ID do casal que o cliente faz parte
-    bool esta_na_fila;           // Se ele esta na fila ou nao
-    time_t timestamp_chegada;    // Hora que ele chegou
-    int vezes_frustrado;         // Quantas vezes cortaram fila na frente dele
+    // dados do cliente
+    int id_cliente;                // id do cliente
+    char nome[MAX_NOME];           // nome do cliente
+    
+    // prioridade
+    Prioridade prioridadeOriginal; // Prioridade antes de lidar com inanicao
+    Prioridade prioridadeAtual;    // Prioridade atual, lidando com inanicao
+    
+    // dados da fila
+    bool estaNaFila;               // Se ele esta na fila ou nao
+    time_t timestamp_chegada;      // Hora que ele chegou
+    int vezes_frustrado;           // Quantas vezes cortaram fila na frente dele
 } Cliente;
 
+//=================================================
+// FILA DE PRIORIDADE
 typedef struct {
-    int timestamp;   // para ordem de chegada (fifo dentro da mesma prioridade)
-    int frustracoes; // contador de frustrações para inanição
-} ItemFila;
+    // matriz das filas
+    //  - primeiro indice define qual fila de prioridade e'
+    //  - segundo indice define  qual item dessa fila e'
+    int fila[NUM_PRIORIDADES][TAMANHO_MAX_FILA];
 
-typedef struct {
-    ItemFila items[MAX_CLIENTES * 10]; // buffer maior para múltiplas iterações
-    int tamanho;
-    int contador_timestamp; // contador global para timestamps
+    // dados da fila (e' circular)
+    int inicio[NUM_PRIORIDADES]; // indice do comeco da fila
+    int fim[NUM_PRIORIDADES];    // indice do fim da fila
+    int contador_timestamp;      // contador global p/ ordem de chegada
+    //  - fila vazia: ( inicio == fim )
+    //  - fila cheia: ( fim+1 % TAM == inicio )
+    //  - tamanho:    ( fim - inicio + TAM ) % TAM
+    //  - proximo:    ( indice + 1 ) % TAM
 } FilaPrioridade;
 
+//=================================================
+// MONITOR
 // monitor do caixa - estrutura principal de sincronização
 typedef struct {
     // mutex e variaveis de cond
@@ -85,16 +94,6 @@ typedef struct {
     // controle de execucao
     bool programa_ativo;         // se o programa ainda estiver rodando
 } Monitor_do_Caixa;
-
-
-// FUNCOES DE PRINT
-void print_monitor_inicializado();
-void print_monitor_finalizado();
-void print_cliente_entrou_fila(int id_cliente, const char* nome);
-void print_cliente_sendo_atendido(int id_cliente, const char* nome);
-void print_cliente_finalizou_atendimento(int id_cliente, const char* nome);
-void print_aviso_deadlock();
-void print_clientes_inicializados();
 
 
 #endif
